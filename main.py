@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, text
 from typing import List, Optional
 import uuid
 from datetime import datetime
@@ -9,11 +9,10 @@ from pydantic import BaseModel
 from config import engine, SessionLocal, get_db, HOST, PORT, DEBUG
 from models import Base, Brand, Creator, Campaign
 
-# Create tables if they don't exist
+# DON'T auto-create tables (already created in Supabase)
 # Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI-to-AI Marketplace API", version="1.0.0")
-
 
 # ========== PYDANTIC SCHEMAS ==========
 
@@ -36,7 +35,6 @@ class BrandCreate(BaseModel):
     past_campaigns_links: Optional[List[str]] = None
     deven_notes: Optional[str] = None
 
-
 class BrandResponse(BrandCreate):
     id: uuid.UUID
     status: str
@@ -47,7 +45,6 @@ class BrandResponse(BrandCreate):
 
     class Config:
         from_attributes = True
-
 
 class CreatorCreate(BaseModel):
     name: str
@@ -76,7 +73,6 @@ class CreatorCreate(BaseModel):
     profile_picture_url: Optional[str] = None
     deven_notes: Optional[str] = None
 
-
 class CreatorResponse(CreatorCreate):
     id: uuid.UUID
     availability_status: str
@@ -86,12 +82,11 @@ class CreatorResponse(CreatorCreate):
     class Config:
         from_attributes = True
 
-
 class CampaignCreate(BaseModel):
     brand_id: uuid.UUID
     creator_id: uuid.UUID
     campaign_name: Optional[str] = None
-    collab_type: str  # "paid" or "barter"
+    collab_type: str
     campaign_value: Optional[float] = None
     commission_percentage: Optional[float] = None
     flat_fee_amount: Optional[float] = None
@@ -100,7 +95,6 @@ class CampaignCreate(BaseModel):
     timeline_start: Optional[str] = None
     timeline_end: Optional[str] = None
     notes: Optional[str] = None
-
 
 class CampaignResponse(CampaignCreate):
     id: uuid.UUID
@@ -115,13 +109,17 @@ class CampaignResponse(CampaignCreate):
     class Config:
         from_attributes = True
 
-
 # ========== HEALTH CHECK ==========
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "version": "1.0.0"}
-
+    try:
+        db = SessionLocal()
+        db.execute(text("SELECT 1"))
+        db.close()
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "degraded", "database": "disconnected", "error": str(e)}
 
 # ========== BRANDS ENDPOINTS ==========
 
@@ -132,7 +130,6 @@ async def create_brand(brand: BrandCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_brand)
     return db_brand
-
 
 @app.get("/brands", response_model=List[BrandResponse])
 async def get_brands(
@@ -146,7 +143,6 @@ async def get_brands(
         query = query.filter(Brand.status == status)
     return query.offset(skip).limit(limit).all()
 
-
 @app.get("/brands/{brand_id}", response_model=BrandResponse)
 async def get_brand(brand_id: uuid.UUID, db: Session = Depends(get_db)):
     db_brand = db.query(Brand).filter(Brand.id == brand_id).first()
@@ -154,13 +150,8 @@ async def get_brand(brand_id: uuid.UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Brand not found")
     return db_brand
 
-
 @app.put("/brands/{brand_id}", response_model=BrandResponse)
-async def update_brand(
-    brand_id: uuid.UUID, 
-    brand: BrandCreate, 
-    db: Session = Depends(get_db)
-):
+async def update_brand(brand_id: uuid.UUID, brand: BrandCreate, db: Session = Depends(get_db)):
     db_brand = db.query(Brand).filter(Brand.id == brand_id).first()
     if not db_brand:
         raise HTTPException(status_code=404, detail="Brand not found")
@@ -173,7 +164,6 @@ async def update_brand(
     db.refresh(db_brand)
     return db_brand
 
-
 @app.delete("/brands/{brand_id}")
 async def delete_brand(brand_id: uuid.UUID, db: Session = Depends(get_db)):
     db_brand = db.query(Brand).filter(Brand.id == brand_id).first()
@@ -184,7 +174,6 @@ async def delete_brand(brand_id: uuid.UUID, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Brand deleted successfully"}
 
-
 # ========== CREATORS ENDPOINTS ==========
 
 @app.post("/creators", response_model=CreatorResponse)
@@ -194,7 +183,6 @@ async def create_creator(creator: CreatorCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_creator)
     return db_creator
-
 
 @app.get("/creators", response_model=List[CreatorResponse])
 async def get_creators(
@@ -211,7 +199,6 @@ async def get_creators(
         query = query.filter(Creator.availability_status == availability)
     return query.offset(skip).limit(limit).all()
 
-
 @app.get("/creators/{creator_id}", response_model=CreatorResponse)
 async def get_creator(creator_id: uuid.UUID, db: Session = Depends(get_db)):
     db_creator = db.query(Creator).filter(Creator.id == creator_id).first()
@@ -219,13 +206,8 @@ async def get_creator(creator_id: uuid.UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Creator not found")
     return db_creator
 
-
 @app.put("/creators/{creator_id}", response_model=CreatorResponse)
-async def update_creator(
-    creator_id: uuid.UUID, 
-    creator: CreatorCreate, 
-    db: Session = Depends(get_db)
-):
+async def update_creator(creator_id: uuid.UUID, creator: CreatorCreate, db: Session = Depends(get_db)):
     db_creator = db.query(Creator).filter(Creator.id == creator_id).first()
     if not db_creator:
         raise HTTPException(status_code=404, detail="Creator not found")
@@ -238,7 +220,6 @@ async def update_creator(
     db.refresh(db_creator)
     return db_creator
 
-
 @app.delete("/creators/{creator_id}")
 async def delete_creator(creator_id: uuid.UUID, db: Session = Depends(get_db)):
     db_creator = db.query(Creator).filter(Creator.id == creator_id).first()
@@ -249,25 +230,19 @@ async def delete_creator(creator_id: uuid.UUID, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Creator deleted successfully"}
 
-
 # ========== CAMPAIGNS ENDPOINTS ==========
 
 @app.post("/campaigns", response_model=CampaignResponse)
 async def create_campaign(campaign: CampaignCreate, db: Session = Depends(get_db)):
-    # Auto-calculate commission_amount if paid collaboration
     commission_amount = None
     if campaign.collab_type == "paid" and campaign.campaign_value and campaign.commission_percentage:
         commission_amount = campaign.campaign_value * (campaign.commission_percentage / 100)
     
-    db_campaign = Campaign(
-        **campaign.dict(),
-        commission_amount=commission_amount
-    )
+    db_campaign = Campaign(**campaign.dict(), commission_amount=commission_amount)
     db.add(db_campaign)
     db.commit()
     db.refresh(db_campaign)
     return db_campaign
-
 
 @app.get("/campaigns", response_model=List[CampaignResponse])
 async def get_campaigns(
@@ -287,7 +262,6 @@ async def get_campaigns(
         query = query.filter(Campaign.creator_id == uuid.UUID(creator_id))
     return query.offset(skip).limit(limit).all()
 
-
 @app.get("/campaigns/{campaign_id}", response_model=CampaignResponse)
 async def get_campaign(campaign_id: uuid.UUID, db: Session = Depends(get_db)):
     db_campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
@@ -295,13 +269,8 @@ async def get_campaign(campaign_id: uuid.UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Campaign not found")
     return db_campaign
 
-
 @app.put("/campaigns/{campaign_id}", response_model=CampaignResponse)
-async def update_campaign(
-    campaign_id: uuid.UUID, 
-    campaign: CampaignCreate, 
-    db: Session = Depends(get_db)
-):
+async def update_campaign(campaign_id: uuid.UUID, campaign: CampaignCreate, db: Session = Depends(get_db)):
     db_campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
     if not db_campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -314,7 +283,6 @@ async def update_campaign(
     db.refresh(db_campaign)
     return db_campaign
 
-
 @app.delete("/campaigns/{campaign_id}")
 async def delete_campaign(campaign_id: uuid.UUID, db: Session = Depends(get_db)):
     db_campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
@@ -325,12 +293,10 @@ async def delete_campaign(campaign_id: uuid.UUID, db: Session = Depends(get_db))
     db.commit()
     return {"message": "Campaign deleted successfully"}
 
-
-# ========== ANALYTICS ENDPOINTS ==========
+# ========== ANALYTICS ==========
 
 @app.get("/analytics/revenue")
 async def revenue_analytics(db: Session = Depends(get_db)):
-    """Get total commission and flat fee revenue"""
     paid_campaigns = db.query(Campaign).filter(
         and_(Campaign.collab_type == "paid", Campaign.status == "completed")
     ).all()
@@ -339,12 +305,8 @@ async def revenue_analytics(db: Session = Depends(get_db)):
         and_(Campaign.collab_type == "barter", Campaign.status == "completed")
     ).all()
     
-    total_commission = sum(
-        float(c.commission_amount or 0) for c in paid_campaigns
-    )
-    total_flat_fee = sum(
-        float(c.flat_fee_amount or 0) for c in barter_campaigns
-    )
+    total_commission = sum(float(c.commission_amount or 0) for c in paid_campaigns)
+    total_flat_fee = sum(float(c.flat_fee_amount or 0) for c in barter_campaigns)
     
     return {
         "total_commission_revenue": total_commission,
@@ -353,7 +315,6 @@ async def revenue_analytics(db: Session = Depends(get_db)):
         "paid_campaigns_completed": len(paid_campaigns),
         "barter_campaigns_completed": len(barter_campaigns)
     }
-
 
 if __name__ == "__main__":
     import uvicorn
