@@ -10,7 +10,7 @@ from config import engine, SessionLocal, get_db, HOST, PORT, DEBUG
 from models import Base, Brand, Creator, Campaign
 
 # Create tables if they don't exist
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI-to-AI Marketplace API", version="1.0.0")
 
